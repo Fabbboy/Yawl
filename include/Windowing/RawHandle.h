@@ -7,39 +7,43 @@
 #include <optional>
 
 namespace yawl {
+// feel free to reuse this in other places
+enum class BackendType {
+  None,
+#ifdef HAVE_X11
+  X11,
+#endif
+#ifdef HAVE_WAYLAND
+  Wayland,
+#endif
+};
+
 struct RawWindowHandle {
 public:
-  enum class Type {
-    None,
-#ifdef HAVE_X11
-    X11,
-#endif
-  };
-
   union Handle {
 #ifdef HAVE_X11
     struct {
       xcb_connection_t *connection;
       xcb_window_t window;
     } x11;
-#else
-    struct {
-    } none;
+#endif
+#ifdef HAVE_WAYLAND
+    #warning "Wayland support is not implemented yet"
 #endif
   };
 
 private:
-  Type type;
+  BackendType type;
   std::optional<Handle> handle;
 
 public:
   RawWindowHandle();
-  RawWindowHandle(Type type, Handle handle);
+  RawWindowHandle(BackendType type, Handle handle);
 #ifdef HAVE_X11
   RawWindowHandle(xcb_connection_t *connection, xcb_window_t window);
 #endif
 
-  Type getType() const { return type; }
+  BackendType getType() const { return type; }
   std::optional<std::reference_wrapper<const Handle>> getHandle() const {
     return handle;
   }
