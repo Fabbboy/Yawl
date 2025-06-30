@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Windowing/Window.h"
 #ifdef HAVE_X11
 
+#include "Windowing/Window.h"
 #include "Utility/Result.h"
 #include "Windowing/Descriptor.h"
 #include "Windowing/RawHandle.h"
