@@ -20,13 +20,20 @@ add_library(yawl STATIC ${SOURCES} ${HEADERS})
 target_include_directories(yawl PUBLIC ${INC_DIR})
 
 if(UNIX AND NOT APPLE) 
-     find_package(PkgConfig REQUIRED)
+    find_package(PkgConfig REQUIRED)
     pkg_check_modules(XCB xcb)
+    pkg_check_modules(WAYLAND wayland-client)
 
     if(XCB_FOUND)
         target_include_directories(yawl PUBLIC ${XCB_INCLUDE_DIRS})
         target_link_libraries(yawl ${XCB_LIBRARIES})
         target_compile_definitions(yawl PUBLIC -DHAVE_X11)
+    endif()
+
+    if(WAYLAND_FOUND)
+        target_include_directories(yawl PUBLIC ${WAYLAND_INCLUDE_DIRS})
+        target_link_libraries(yawl ${WAYLAND_LIBRARIES})
+        target_compile_definitions(yawl PUBLIC -DHAVE_WAYLAND)
     endif()
 endif()
 
