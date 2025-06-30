@@ -2,6 +2,7 @@
 #include <iostream>
 
 int main() {
+#ifdef HAVE_X11
   yawl::Descriptor desc;
   desc.setDimensions(yawl::Size<size_t>::create(800, 600).value())
       .setName("Yawl Example Window");
@@ -17,4 +18,9 @@ int main() {
 
   while (true) {
   }
+#else
+  std::cerr << "X11 support is not enabled. Please compile with X11 support."
+            << std::endl;
+  return 1;
+#endif
 }
