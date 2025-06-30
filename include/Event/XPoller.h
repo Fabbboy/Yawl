@@ -17,6 +17,11 @@ private:
                            xcb_client_message_event_t *ev);
   void handleDestroyNotify(EventLoop &loop, WindowId id,
                            xcb_destroy_notify_event_t *ev);
+  
+  // Cache for WM_DELETE_WINDOW atom lookup
+  xcb_atom_t getWmDeleteWindowAtom(xcb_connection_t *conn);
+  
+  static xcb_atom_t cached_wm_delete_window;
 };
 } // namespace yawl
 #endif // HAVE_X11

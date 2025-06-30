@@ -4,6 +4,7 @@
 #include "Utility/Value.h"
 #include <Windowing/XWindow.h>
 #include <cstdint>
+#include <cstdlib>
 #include <string_view>
 #include <sys/types.h>
 #include <xcb/xcb.h>
@@ -22,7 +23,7 @@ XWindow::~XWindow() {
 }
 
 XWindow::XWindow(XWindow &&other) noexcept
-    : connection(other.connection), window(other.window),
+    : connection(other.connection), screen(other.screen), window(other.window),
       isOwning(other.isOwning) {
   other.connection = nullptr;
   other.screen = nullptr;
@@ -141,6 +142,22 @@ Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
   xcb_window_t window = window_result.value();
 
   XWindow xwindow(conn, screen, window, true);
+  
+  // Set up WM_DELETE_WINDOW protocol to handle close button properly
+  xcb_intern_atom_cookie_t wm_protocols_cookie = xcb_intern_atom(conn, 1, 12, "WM_PROTOCOLS");
+  xcb_intern_atom_cookie_t wm_delete_window_cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
+  
+  xcb_intern_atom_reply_t *wm_protocols_reply = xcb_intern_atom_reply(conn, wm_protocols_cookie, nullptr);
+  xcb_intern_atom_reply_t *wm_delete_window_reply = xcb_intern_atom_reply(conn, wm_delete_window_cookie, nullptr);
+  
+  if (wm_protocols_reply && wm_delete_window_reply) {
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, wm_protocols_reply->atom, 
+                       XCB_ATOM_ATOM, 32, 1, &wm_delete_window_reply->atom);
+  }
+  
+  if (wm_protocols_reply) std::free(wm_protocols_reply);
+  if (wm_delete_window_reply) std::free(wm_delete_window_reply);
+  
   auto modify_res = xwindow.modifyStringProperty(XCB_ATOM_WM_NAME,
                                                  XCB_ATOM_STRING, desc.name);
 

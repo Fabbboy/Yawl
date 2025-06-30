@@ -42,6 +42,9 @@ private:
                                                   xcb_screen_t *screen,
                                                   const Descriptor &desc);
 
+  static Result<void, Error> setupWmProtocols(xcb_connection_t *conn,
+                                               xcb_window_t window);
+
   Result<void, Error> modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
                                            std::string_view value);
 
