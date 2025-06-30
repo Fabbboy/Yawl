@@ -4,6 +4,7 @@ namespace yawl {
 RawWindowHandle::RawWindowHandle() : type(Type::None), handle(std::nullopt) {}
 RawWindowHandle::RawWindowHandle(Type type, Handle handle)
     : type(type), handle(handle) {}
+#ifdef HAVE_X11
 RawWindowHandle::RawWindowHandle(xcb_connection_t *connection,
                                  xcb_window_t window)
     : type(RawWindowHandle::Type::X11) {
@@ -12,4 +13,5 @@ RawWindowHandle::RawWindowHandle(xcb_connection_t *connection,
   h.x11.window = window;
   handle = h;
 }
+#endif
 } // namespace yawl

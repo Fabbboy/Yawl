@@ -7,4 +7,6 @@
 
 #include "Windowing/Descriptor.h"
 #include "Windowing/RawHandle.h"
+#ifdef HAVE_X11
 #include "Windowing/XWindow.h"
+#endif

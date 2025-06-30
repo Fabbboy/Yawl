@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef HAVE_X11
+
 #include "Windowing/Descriptor.h"
 #include "Windowing/RawHandle.h"
 #include "Utility/Result.h"
@@ -64,3 +66,5 @@ public:
   static Result<XWindow, Error> create(const Descriptor &desc);
 };
 } // namespace yawl
+
+#endif // HAVE_X11

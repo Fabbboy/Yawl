@@ -1,3 +1,5 @@
+#ifdef HAVE_X11
+
 #include "Utility/Result.h"
 #include "Utility/Value.h"
 #include <Windowing/XWindow.h>
@@ -162,3 +164,5 @@ Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
 }
 
 } // namespace yawl
+
+#endif // HAVE_X11
