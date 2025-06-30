@@ -3,20 +3,20 @@
 #include "Result.h"
 #include <array>
 #include <cstddef>
+#include <type_traits>
 
 namespace yawl {
 
 template <typename T, std::size_t Size> class RingBuffer {
 public:
   enum class Error { Empty, Full };
-
   RingBuffer() : head(0), tail(0), full(false) {}
 
   Result<void, Error> push(const T &item) {
     if (full)
       return Err(Error::Full);
 
-    buffer[head] = item;
+    new (&getBuffer()[head]) T(item);
     head = (head + 1) % Size;
     full = head == tail;
     return Ok();
@@ -26,7 +26,8 @@ public:
     if (isEmpty())
       return Err(Error::Empty);
 
-    T item = std::move(buffer[tail]);
+    T item = std::move(getBuffer()[tail]);
+    getBuffer()[tail].~T();
     full = false;
     tail = (tail + 1) % Size;
     return Ok(std::move(item));
@@ -50,7 +51,13 @@ public:
   }
 
 private:
-  std::array<T, Size> buffer;
+  T *getBuffer() { return reinterpret_cast<T *>(buffer.data()); }
+
+  const T *getBuffer() const {
+    return reinterpret_cast<const T *>(buffer.data());
+  }
+
+  std::array<std::aligned_storage_t<sizeof(T), alignof(T)>, Size> buffer;
   std::size_t head;
   std::size_t tail;
   bool full;

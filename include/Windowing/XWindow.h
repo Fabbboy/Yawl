@@ -1,15 +1,16 @@
 #pragma once
 
+#include "Windowing/Window.h"
 #ifdef HAVE_X11
 
+#include "Utility/Result.h"
 #include "Windowing/Descriptor.h"
 #include "Windowing/RawHandle.h"
-#include "Utility/Result.h"
 #include <External/x11.h>
 
 namespace yawl {
 
-struct XWindow : public HasWindowHandle {
+struct XWindow : public Window {
 public:
   enum class Error {
     FailedToConnect,
