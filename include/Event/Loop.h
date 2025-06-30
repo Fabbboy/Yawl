@@ -8,12 +8,26 @@
 #include <vector>
 
 namespace yawl {
+#ifdef HAVE_X11
+struct XPoller;
+#endif
 struct EventLoop {
+#ifdef HAVE_X11
+  friend struct XPoller;
+#endif
 private:
-  RingBuffer<Event, 12> eventQueue;
+  struct QueuedEvent {
+    WindowId id;
+    Event event;
+  };
+
+  RingBuffer<QueuedEvent, 12> eventQueue;
   std::vector<std::unique_ptr<Window>> windows;
   bool running;
   Handler &handler;
+
+  void dispatchQueuedEvents();
+  void queueEvent(WindowId id, const Event &event);
 
 public:
   EventLoop(Handler &h);
