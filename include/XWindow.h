@@ -15,6 +15,7 @@ public:
     FailedToGetScreen,
     FailedToCreateWindow,
     FailedToModifyWindow,
+    FailedToShowWindow,
   };
 
   enum class PropertyFormat : uint8_t {
@@ -40,7 +41,6 @@ private:
                                                   const Descriptor &desc);
 
   Result<void, Error> modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
-                                           PropertyFormat format,
                                            std::string_view value);
 
 public:

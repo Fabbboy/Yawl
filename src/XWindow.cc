@@ -73,25 +73,38 @@ XWindow::createWindow(xcb_connection_t *conn, xcb_screen_t *screen,
           XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE};
 
   xcb_window_t window = xcb_generate_id(conn);
-  xcb_create_window(conn, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
-                    clampToU16(desc.dimensions.getWidth()),
-                    clampToU16(desc.dimensions.getHeight()), 0,
-                    XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual,
-                    value_mask, value_list);
+  xcb_void_cookie_t status = xcb_create_window(
+      conn, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
+      clampToU16(desc.dimensions.getWidth()),
+      clampToU16(desc.dimensions.getHeight()), 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
+      screen->root_visual, value_mask, value_list);
+
+  xcb_generic_error_t *error = xcb_request_check(conn, status);
+  if (error) {
+    xcb_disconnect(conn);
+    return Err(XWindow::Error::FailedToCreateWindow);
+  }
 
   return Ok(window);
 }
 
 Result<void, XWindow::Error>
 XWindow::modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
-                              PropertyFormat format, std::string_view value) {
+                              std::string_view value) {
   if (value.empty()) {
     xcb_delete_property(connection, window, property);
     return Ok();
   }
 
-  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, property, type,
-                      static_cast<uint8_t>(format), value.size(), value.data());
+  xcb_void_cookie_t status = xcb_change_property(
+      connection, XCB_PROP_MODE_REPLACE, window, property, type,
+      static_cast<uint8_t>(PropertyFormat::Char), value.size(), value.data());
+
+  xcb_generic_error_t *error = xcb_request_check(connection, status);
+  if (error) {
+    xcb_disconnect(connection);
+    return Err(XWindow::Error::FailedToModifyWindow);
+  }
 
   return Ok();
 }
@@ -126,8 +139,8 @@ Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
   xcb_window_t window = window_result.value();
 
   XWindow xwindow(conn, screen, window, true);
-  auto modify_res = xwindow.modifyStringProperty(
-      XCB_ATOM_WM_NAME, XCB_ATOM_STRING, PropertyFormat::Char, desc.name);
+  auto modify_res = xwindow.modifyStringProperty(XCB_ATOM_WM_NAME,
+                                                 XCB_ATOM_STRING, desc.name);
 
   if (modify_res.is_err()) {
     xcb_destroy_window(conn, window);
@@ -135,7 +148,14 @@ Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
     return Err(modify_res.error());
   }
 
-  xcb_map_window(conn, window);
+  xcb_void_cookie_t status = xcb_map_window(conn, window);
+  xcb_generic_error_t *error = xcb_request_check(conn, status);
+  if (error) {
+    xcb_destroy_window(conn, window);
+    xcb_disconnect(conn);
+    return Err(XWindow::Error::FailedToShowWindow);
+  }
+
   xcb_flush(conn);
 
   return Ok(std::move(xwindow));
