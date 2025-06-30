@@ -14,4 +14,7 @@ int main() {
 
   yawl::XWindow window = std::move(result.value());
   std::cout << "Window created successfully!" << std::endl;
+
+  while (true) {
+  }
 }

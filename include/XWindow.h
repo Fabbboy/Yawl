@@ -14,6 +14,13 @@ public:
     FailedToConnect,
     FailedToGetScreen,
     FailedToCreateWindow,
+    FailedToModifyWindow,
+  };
+
+  enum class PropertyFormat : uint8_t {
+    Char = 8,
+    Short = 16,
+    Int = 32,
   };
 
 private:
@@ -31,6 +38,10 @@ private:
   static Result<xcb_window_t, Error> createWindow(xcb_connection_t *conn,
                                                   xcb_screen_t *screen,
                                                   const Descriptor &desc);
+
+  Result<void, Error> modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
+                                           PropertyFormat format,
+                                           std::string_view value);
 
 public:
   ~XWindow();

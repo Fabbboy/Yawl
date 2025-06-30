@@ -2,6 +2,8 @@
 #include "utility/Value.h"
 #include <XWindow.h>
 #include <cstdint>
+#include <string_view>
+#include <sys/types.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 
@@ -80,6 +82,20 @@ XWindow::createWindow(xcb_connection_t *conn, xcb_screen_t *screen,
   return Ok(window);
 }
 
+Result<void, XWindow::Error>
+XWindow::modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
+                              PropertyFormat format, std::string_view value) {
+  if (value.empty()) {
+    xcb_delete_property(connection, window, property);
+    return Ok();
+  }
+
+  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, property, type,
+                      static_cast<uint8_t>(format), value.size(), value.data());
+
+  return Ok();
+}
+
 Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
   int default_screen_index;
   xcb_connection_t *conn = xcb_connect(nullptr, &default_screen_index);
@@ -108,10 +124,21 @@ Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
   }
 
   xcb_window_t window = window_result.value();
+
+  XWindow xwindow(conn, screen, window, true);
+  auto modify_res = xwindow.modifyStringProperty(
+      XCB_ATOM_WM_NAME, XCB_ATOM_STRING, PropertyFormat::Char, desc.name);
+
+  if (modify_res.is_err()) {
+    xcb_destroy_window(conn, window);
+    xcb_disconnect(conn);
+    return Err(modify_res.error());
+  }
+
   xcb_map_window(conn, window);
   xcb_flush(conn);
 
-  return Ok(XWindow(conn, screen, window, true));
+  return Ok(std::move(xwindow));
 }
 
 } // namespace yawl
