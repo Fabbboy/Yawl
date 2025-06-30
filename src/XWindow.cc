@@ -1,6 +1,6 @@
-#include "utility/Result.h"
-#include "utility/Value.h"
-#include <XWindow.h>
+#include "Utility/Result.h"
+#include "Utility/Value.h"
+#include <Windowing/XWindow.h>
 #include <cstdint>
 #include <string_view>
 #include <sys/types.h>

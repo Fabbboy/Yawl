@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Size.h"
 
-#include "utility/Result.h"
-#include "utility/Value.h"
+#include "Utility/Size.h"
+#include "Utility/Result.h"
+#include "Utility/Value.h"
 
-#include "Descriptor.h"
-#include "RawHandle.h"
-#include "XWindow.h"
+#include "Windowing/Descriptor.h"
+#include "Windowing/RawHandle.h"
+#include "Windowing/XWindow.h"

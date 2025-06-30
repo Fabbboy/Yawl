@@ -1,6 +1,6 @@
 #pragma once
 
-#include "external/x11.h"
+#include "External/x11.h"
 #include <functional>
 #include <optional>
 

@@ -1,10 +1,9 @@
 #pragma once
 
-#include "Descriptor.h"
-#include "RawHandle.h"
-#include "utility/Result.h"
-#include <external/x11.h>
-#include <xcb/xproto.h>
+#include "Windowing/Descriptor.h"
+#include "Windowing/RawHandle.h"
+#include "Utility/Result.h"
+#include <External/x11.h>
 
 namespace yawl {
 

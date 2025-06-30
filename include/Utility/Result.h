@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utility/Panic.h"
+#include "Utility/Panic.h"
 #include <optional>
 
 namespace yawl {
