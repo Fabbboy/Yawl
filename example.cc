@@ -1,7 +1,10 @@
+#include "Event/Loop.h"
 #include <Yawl.h>
 #include <iostream>
 
 int main() {
+  yawl::EventLoop eventLoop;
+
 #ifdef HAVE_X11
   yawl::Descriptor desc;
   desc.setDimensions(yawl::Size<size_t>::create(800, 600).value())

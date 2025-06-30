@@ -10,3 +10,6 @@
 #ifdef HAVE_X11
 #include "Windowing/XWindow.h"
 #endif
+
+#include "Event/Event.h"
+#include "Event/Loop.h"
