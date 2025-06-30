@@ -1,86 +1,64 @@
 #include "Event/XPoller.h"
-
 #ifdef HAVE_X11
 #include "Event/Loop.h"
-#include <External/x11.h>
 #include <cstdlib>
 
 namespace yawl {
 
-// Static member definition
-xcb_atom_t XPoller::cached_wm_delete_window = XCB_ATOM_NONE;
+XPoller::XPoller(xcb_connection_t *conn)
+    : connection(conn), wm_protocols(XCB_ATOM_NONE), wm_delete_window(XCB_ATOM_NONE) {
+  xcb_intern_atom_cookie_t proto_cookie = xcb_intern_atom(conn, 1, 12, "WM_PROTOCOLS");
+  xcb_intern_atom_cookie_t del_cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
+  xcb_intern_atom_reply_t *proto_reply = xcb_intern_atom_reply(conn, proto_cookie, nullptr);
+  xcb_intern_atom_reply_t *del_reply = xcb_intern_atom_reply(conn, del_cookie, nullptr);
+  if (proto_reply && del_reply) {
+    wm_protocols = proto_reply->atom;
+    wm_delete_window = del_reply->atom;
+  }
+  if (proto_reply)
+    std::free(proto_reply);
+  if (del_reply)
+    std::free(del_reply);
+}
 
-void XPoller::poll(EventLoop &loop, WindowId id, Window &window) {
-  RawWindowHandle handle = window.getWindowHandle();
-  if (handle.getType() != RawWindowHandle::Type::X11)
-    return;
-
-  auto optHandle = handle.getHandle();
-  if (!optHandle)
-    return;
-
-  const auto &h = optHandle->get();
+void XPoller::poll(EventLoop &loop) {
   xcb_generic_event_t *ev = nullptr;
-  while ((ev = xcb_poll_for_event(h.x11.connection)) != nullptr) {
-    handleEvent(loop, id, ev);
+  while ((ev = xcb_poll_for_event(connection)) != nullptr) {
+    handleEvent(loop, ev);
     std::free(ev);
   }
 }
 
-void XPoller::handleEvent(EventLoop &loop, WindowId id, xcb_generic_event_t *ev) {
+void XPoller::handleEvent(EventLoop &loop, xcb_generic_event_t *ev) {
   uint8_t type = ev->response_type & ~0x80;
   switch (type) {
   case XCB_CLIENT_MESSAGE:
-    handleClientMessage(loop, id,
-                        reinterpret_cast<xcb_client_message_event_t *>(ev));
+    handleClientMessage(loop, reinterpret_cast<xcb_client_message_event_t *>(ev));
     break;
   case XCB_DESTROY_NOTIFY:
-    handleDestroyNotify(loop, id,
-                        reinterpret_cast<xcb_destroy_notify_event_t *>(ev));
+    handleDestroyNotify(loop, reinterpret_cast<xcb_destroy_notify_event_t *>(ev));
     break;
   default:
     break;
   }
 }
 
-xcb_atom_t XPoller::getWmDeleteWindowAtom(xcb_connection_t *conn) {
-  if (cached_wm_delete_window == XCB_ATOM_NONE) {
-    xcb_intern_atom_cookie_t cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
-    xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(conn, cookie, nullptr);
-    if (reply) {
-      cached_wm_delete_window = reply->atom;
-      std::free(reply);
-    }
-  }
-  return cached_wm_delete_window;
-}
-
-void XPoller::handleClientMessage(EventLoop &loop, WindowId id,
-                                  xcb_client_message_event_t *ev) {
-  // Get the connection to look up the WM_DELETE_WINDOW atom
-  RawWindowHandle handle = loop.windows[id]->getWindowHandle();
-  if (handle.getType() != RawWindowHandle::Type::X11)
+void XPoller::handleClientMessage(EventLoop &loop, xcb_client_message_event_t *ev) {
+  auto optId = loop.getWindowId(ev->window);
+  if (!optId)
     return;
-
-  auto optHandle = handle.getHandle();
-  if (!optHandle)
-    return;
-
-  const auto &h = optHandle->get();
-  xcb_atom_t wm_delete_window = getWmDeleteWindowAtom(h.x11.connection);
-  
-  // Check if this is a WM_DELETE_WINDOW message
   if (ev->data.data32[0] == wm_delete_window) {
     Event e{Event::Type::CloseRequest, {}};
-    loop.queueEvent(id, e);
+    loop.queueEvent(*optId, e);
   }
 }
 
-void XPoller::handleDestroyNotify(EventLoop &loop, WindowId id,
-                                  xcb_destroy_notify_event_t *ev) {
-  (void)ev;
+void XPoller::handleDestroyNotify(EventLoop &loop, xcb_destroy_notify_event_t *ev) {
+  auto optId = loop.getWindowId(ev->window);
+  if (!optId)
+    return;
   Event e{Event::Type::CloseRequest, {}};
-  loop.queueEvent(id, e);
+  loop.queueEvent(*optId, e);
 }
 
 } // namespace yawl

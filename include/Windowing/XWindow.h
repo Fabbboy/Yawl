@@ -6,6 +6,7 @@
 #include "Utility/Result.h"
 #include "Windowing/Descriptor.h"
 #include "Windowing/RawHandle.h"
+#include "Windowing/XClient.h"
 #include <External/x11.h>
 
 namespace yawl {
@@ -32,7 +33,6 @@ private:
   xcb_window_t window;
   bool isOwning;
 
-private:
   XWindow(xcb_connection_t *conn, xcb_screen_t *screen, xcb_window_t win,
           bool owning);
   static Result<xcb_screen_t *, Error> getScreen(xcb_connection_t *conn,
@@ -41,9 +41,6 @@ private:
   static Result<xcb_window_t, Error> createWindow(xcb_connection_t *conn,
                                                   xcb_screen_t *screen,
                                                   const Descriptor &desc);
-
-  static Result<void, Error> setupWmProtocols(xcb_connection_t *conn,
-                                               xcb_window_t window);
 
   Result<void, Error> modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
                                            std::string_view value);
@@ -57,16 +54,15 @@ public:
   XWindow(XWindow &&other) noexcept;
   XWindow &operator=(XWindow &&other) noexcept;
 
-public:
   RawWindowHandle getWindowHandle() const override {
     return RawWindowHandle(connection, window);
-  };
+  }
 
-public:
   xcb_connection_t *getConnection() const { return connection; }
   xcb_window_t getWindow() const { return window; }
   bool isOwningWindow() const { return isOwning; }
 
+  static Result<XWindow, Error> create(XClient &client, const Descriptor &desc);
   static Result<XWindow, Error> create(const Descriptor &desc);
 };
 } // namespace yawl

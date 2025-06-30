@@ -1,24 +1,27 @@
 #ifdef HAVE_X11
 
+#include "Windowing/XWindow.h"
+#include "Windowing/XClient.h"
+#include "Event/XPoller.h"
 #include "Utility/Result.h"
 #include "Utility/Value.h"
-#include <Windowing/XWindow.h>
 #include <cstdint>
 #include <cstdlib>
 #include <string_view>
-#include <sys/types.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 
 namespace yawl {
-XWindow::XWindow(xcb_connection_t *conn, xcb_screen_t *screen, xcb_window_t win,
+
+XWindow::XWindow(xcb_connection_t *conn, xcb_screen_t *scr, xcb_window_t win,
                  bool owning)
-    : connection(conn), screen(screen), window(win), isOwning(owning) {}
+    : connection(conn), screen(scr), window(win), isOwning(owning) {}
 
 XWindow::~XWindow() {
-  if (isOwning && connection && window) {
+  if (connection && window) {
     xcb_destroy_window(connection, window);
-    xcb_disconnect(connection);
+    if (isOwning)
+      xcb_disconnect(connection);
   }
 }
 
@@ -33,8 +36,10 @@ XWindow::XWindow(XWindow &&other) noexcept
 
 XWindow &XWindow::operator=(XWindow &&other) noexcept {
   if (this != &other) {
-    if (isOwning) {
+    if (connection && window) {
       xcb_destroy_window(connection, window);
+      if (isOwning)
+        xcb_disconnect(connection);
     }
     connection = other.connection;
     screen = other.screen;
@@ -66,34 +71,35 @@ XWindow::getScreen(xcb_connection_t *conn, int index) {
 }
 
 Result<xcb_window_t, XWindow::Error>
-XWindow::createWindow(xcb_connection_t *conn, xcb_screen_t *screen,
+XWindow::createWindow(xcb_connection_t *conn, xcb_screen_t *scr,
                       const Descriptor &desc) {
-  std::uint16_t value_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
-  std::uint32_t value_list[2] = {
-      screen->white_pixel,
-      XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY |
-          XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_POINTER_MOTION |
-          XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE};
+  std::uint16_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
+  std::uint32_t values[2] = {scr->white_pixel,
+                             XCB_EVENT_MASK_EXPOSURE |
+                                 XCB_EVENT_MASK_STRUCTURE_NOTIFY |
+                                 XCB_EVENT_MASK_KEY_PRESS |
+                                 XCB_EVENT_MASK_POINTER_MOTION |
+                                 XCB_EVENT_MASK_BUTTON_PRESS |
+                                 XCB_EVENT_MASK_BUTTON_RELEASE};
 
-  xcb_window_t window = xcb_generate_id(conn);
+  xcb_window_t win = xcb_generate_id(conn);
   xcb_void_cookie_t status = xcb_create_window(
-      conn, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0,
+      conn, XCB_COPY_FROM_PARENT, win, scr->root, 0, 0,
       clampToU16(desc.dimensions.getWidth()),
       clampToU16(desc.dimensions.getHeight()), 0, XCB_WINDOW_CLASS_INPUT_OUTPUT,
-      screen->root_visual, value_mask, value_list);
+      scr->root_visual, mask, values);
 
   xcb_generic_error_t *error = xcb_request_check(conn, status);
   if (error) {
-    xcb_disconnect(conn);
     return Err(XWindow::Error::FailedToCreateWindow);
   }
 
-  return Ok(window);
+  return Ok(win);
 }
 
-Result<void, XWindow::Error>
-XWindow::modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
-                              std::string_view value) {
+Result<void, XWindow::Error> XWindow::modifyStringProperty(xcb_atom_t property,
+                                                           xcb_atom_t type,
+                                                           std::string_view value) {
   if (value.empty()) {
     xcb_delete_property(connection, window, property);
     return Ok();
@@ -105,79 +111,110 @@ XWindow::modifyStringProperty(xcb_atom_t property, xcb_atom_t type,
 
   xcb_generic_error_t *error = xcb_request_check(connection, status);
   if (error) {
-    xcb_disconnect(connection);
     return Err(XWindow::Error::FailedToModifyWindow);
   }
 
   return Ok();
 }
 
+Result<XWindow, XWindow::Error> XWindow::create(XClient &client,
+                                                const Descriptor &desc) {
+  xcb_connection_t *conn = client.getConnection();
+  xcb_screen_t *scr = client.getScreen();
+
+  auto window_res = createWindow(conn, scr, desc);
+  if (window_res.is_err()) {
+    return Err(window_res.error());
+  }
+
+  xcb_window_t win = window_res.value();
+  XWindow xw(conn, scr, win, false);
+
+  XPoller *poller = client.getPoller();
+  if (poller) {
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, win, poller->wm_protocols,
+                        XCB_ATOM_ATOM, 32, 1, &poller->wm_delete_window);
+  }
+
+  auto mod_res = xw.modifyStringProperty(XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
+                                         desc.name);
+  if (mod_res.is_err()) {
+    xcb_destroy_window(conn, win);
+    return Err(mod_res.error());
+  }
+
+  xcb_void_cookie_t status = xcb_map_window(conn, win);
+  xcb_generic_error_t *error = xcb_request_check(conn, status);
+  if (error) {
+    xcb_destroy_window(conn, win);
+    return Err(XWindow::Error::FailedToShowWindow);
+  }
+
+  xcb_flush(conn);
+
+  return Ok(std::move(xw));
+}
+
 Result<XWindow, XWindow::Error> XWindow::create(const Descriptor &desc) {
-  int default_screen_index;
-  xcb_connection_t *conn = xcb_connect(nullptr, &default_screen_index);
+  int default_screen;
+  xcb_connection_t *conn = xcb_connect(nullptr, &default_screen);
   if (xcb_connection_has_error(conn)) {
     return Err(Error::FailedToConnect);
   }
 
-  int target_screen_index = desc.screen.value_or(default_screen_index);
-  auto screen_result = getScreen(conn, target_screen_index);
-
-  if (screen_result.is_err() && target_screen_index != default_screen_index) {
-    screen_result = getScreen(conn, default_screen_index);
+  int target_screen = desc.screen.value_or(default_screen);
+  auto screen_res = getScreen(conn, target_screen);
+  if (screen_res.is_err() && target_screen != default_screen) {
+    screen_res = getScreen(conn, default_screen);
   }
-
-  if (screen_result.is_err()) {
+  if (screen_res.is_err()) {
     xcb_disconnect(conn);
-    return Err(screen_result.error());
+    return Err(screen_res.error());
   }
 
-  xcb_screen_t *screen = screen_result.value();
-
-  auto window_result = createWindow(conn, screen, desc);
-  if (window_result.is_err()) {
+  xcb_screen_t *scr = screen_res.value();
+  auto window_res = createWindow(conn, scr, desc);
+  if (window_res.is_err()) {
     xcb_disconnect(conn);
-    return Err(window_result.error());
+    return Err(window_res.error());
   }
 
-  xcb_window_t window = window_result.value();
+  xcb_window_t win = window_res.value();
 
-  XWindow xwindow(conn, screen, window, true);
-  
-  // Set up WM_DELETE_WINDOW protocol to handle close button properly
-  xcb_intern_atom_cookie_t wm_protocols_cookie = xcb_intern_atom(conn, 1, 12, "WM_PROTOCOLS");
-  xcb_intern_atom_cookie_t wm_delete_window_cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
-  
-  xcb_intern_atom_reply_t *wm_protocols_reply = xcb_intern_atom_reply(conn, wm_protocols_cookie, nullptr);
-  xcb_intern_atom_reply_t *wm_delete_window_reply = xcb_intern_atom_reply(conn, wm_delete_window_cookie, nullptr);
-  
-  if (wm_protocols_reply && wm_delete_window_reply) {
-    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, window, wm_protocols_reply->atom, 
-                       XCB_ATOM_ATOM, 32, 1, &wm_delete_window_reply->atom);
+  // Set up WM_DELETE_WINDOW protocol for this window
+  xcb_intern_atom_cookie_t proto_cookie = xcb_intern_atom(conn, 1, 12, "WM_PROTOCOLS");
+  xcb_intern_atom_cookie_t del_cookie = xcb_intern_atom(conn, 0, 16, "WM_DELETE_WINDOW");
+  xcb_intern_atom_reply_t *proto_reply = xcb_intern_atom_reply(conn, proto_cookie, nullptr);
+  xcb_intern_atom_reply_t *del_reply = xcb_intern_atom_reply(conn, del_cookie, nullptr);
+  if (proto_reply && del_reply) {
+    xcb_change_property(conn, XCB_PROP_MODE_REPLACE, win, proto_reply->atom,
+                        XCB_ATOM_ATOM, 32, 1, &del_reply->atom);
   }
-  
-  if (wm_protocols_reply) std::free(wm_protocols_reply);
-  if (wm_delete_window_reply) std::free(wm_delete_window_reply);
-  
-  auto modify_res = xwindow.modifyStringProperty(XCB_ATOM_WM_NAME,
-                                                 XCB_ATOM_STRING, desc.name);
+  if (proto_reply)
+    std::free(proto_reply);
+  if (del_reply)
+    std::free(del_reply);
 
-  if (modify_res.is_err()) {
-    xcb_destroy_window(conn, window);
+  XWindow xw(conn, scr, win, true);
+  auto mod_res = xw.modifyStringProperty(XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
+                                         desc.name);
+  if (mod_res.is_err()) {
+    xcb_destroy_window(conn, win);
     xcb_disconnect(conn);
-    return Err(modify_res.error());
+    return Err(mod_res.error());
   }
 
-  xcb_void_cookie_t status = xcb_map_window(conn, window);
+  xcb_void_cookie_t status = xcb_map_window(conn, win);
   xcb_generic_error_t *error = xcb_request_check(conn, status);
   if (error) {
-    xcb_destroy_window(conn, window);
+    xcb_destroy_window(conn, win);
     xcb_disconnect(conn);
     return Err(XWindow::Error::FailedToShowWindow);
   }
 
   xcb_flush(conn);
 
-  return Ok(std::move(xwindow));
+  return Ok(std::move(xw));
 }
 
 } // namespace yawl
