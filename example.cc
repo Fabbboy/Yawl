@@ -5,9 +5,11 @@
 struct Handler : public yawl::Handler {
   void onEvent(yawl::EventLoop &loop, yawl::WindowId id,
                yawl::Event &event) override {
-    if (event.type == yawl::Event::Type::CloseRequest) {
-      std::cout << "Received close request for window ID: " << id << std::endl;
+    switch (event.type) {
+    case yawl::Event::Type::CloseRequest:
+      std::cout << "Close request received for window ID: " << id << std::endl;
       loop.unmount(id);
+      break;
     }
   }
 };
