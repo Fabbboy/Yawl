@@ -29,6 +29,24 @@ void XPoller::poll(EventLoop &loop) {
   }
 }
 
+void XPoller::registerWindow(WindowId id, Window &window) {
+  RawWindowHandle handle = window.getWindowHandle();
+  if (handle.getType() == BackendType::X11) {
+    auto opt = handle.getHandle();
+    if (opt)
+      windowMap[opt->get().x11.window] = id;
+  }
+}
+
+void XPoller::unregisterWindow(WindowId id, Window &window) {
+  RawWindowHandle handle = window.getWindowHandle();
+  if (handle.getType() == BackendType::X11) {
+    auto opt = handle.getHandle();
+    if (opt)
+      windowMap.erase(opt->get().x11.window);
+  }
+}
+
 void XPoller::handleEvent(EventLoop &loop, xcb_generic_event_t *ev) {
   uint8_t type = ev->response_type & ~0x80;
   switch (type) {
@@ -44,21 +62,21 @@ void XPoller::handleEvent(EventLoop &loop, xcb_generic_event_t *ev) {
 }
 
 void XPoller::handleClientMessage(EventLoop &loop, xcb_client_message_event_t *ev) {
-  auto optId = loop.getWindowId(ev->window);
-  if (!optId)
+  auto it = windowMap.find(ev->window);
+  if (it == windowMap.end())
     return;
   if (ev->data.data32[0] == wm_delete_window) {
     Event e{Event::Type::CloseRequest, {}};
-    loop.queueEvent(*optId, e);
+    loop.queueEvent(it->second, e);
   }
 }
 
 void XPoller::handleDestroyNotify(EventLoop &loop, xcb_destroy_notify_event_t *ev) {
-  auto optId = loop.getWindowId(ev->window);
-  if (!optId)
+  auto it = windowMap.find(ev->window);
+  if (it == windowMap.end())
     return;
   Event e{Event::Type::CloseRequest, {}};
-  loop.queueEvent(*optId, e);
+  loop.queueEvent(it->second, e);
 }
 
 } // namespace yawl

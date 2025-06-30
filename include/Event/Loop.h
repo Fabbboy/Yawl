@@ -7,11 +7,7 @@
 #include "Windowing/Window.h"
 #include <memory>
 #include <vector>
-#ifdef HAVE_X11
-#include <unordered_map>
-#include <optional>
-#include <External/x11.h>
-#endif
+
 
 namespace yawl {
 struct EventLoop {
@@ -23,9 +19,6 @@ private:
 
   RingBuffer<QueuedEvent, 12> eventQueue;
   std::vector<std::unique_ptr<Window>> windows;
-#ifdef HAVE_X11
-  std::unordered_map<xcb_window_t, WindowId> x11WindowMap;
-#endif
   bool running;
   Handler &handler;
   Poller *poller;
@@ -35,9 +28,6 @@ private:
 public:
   EventLoop(Handler &h, Poller *poller = nullptr);
 
-#ifdef HAVE_X11
-  std::optional<WindowId> getWindowId(xcb_window_t win) const;
-#endif
 
   WindowId mount(std::unique_ptr<Window> window);
   void unmount(WindowId id);
